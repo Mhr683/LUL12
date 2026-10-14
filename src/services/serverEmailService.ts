@@ -36,6 +36,12 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return '***';
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 /**
  * Persists an email transmission attempt to the Firestore `email_logs` collection.
  * Does not throw if logging fails.
@@ -77,9 +83,10 @@ async function sendViaResend(
   const { to, subject, html, text, type, order, metadata } = payload;
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const sender = process.env.EMAIL_FROM?.trim() || 'Store Orders <onboarding@resend.dev>';
+  const maskedTo = maskEmail(to);
 
   if (!to || !to.includes('@')) {
-    const errorMsg = `Invalid recipient email address: "${to}".`;
+    const errorMsg = 'Invalid recipient email address provided.';
     console.warn(`[EmailService] ${errorMsg}`);
     await logEmailAttempt(adminDb, {
       orderId: order?.id,
@@ -98,7 +105,7 @@ async function sendViaResend(
 
   if (!apiKey) {
     const errorMsg = 'RESEND_API_KEY is not configured in environment variables.';
-    console.warn(`[EmailService] ${errorMsg} Skipped sending real email to ${to}.`);
+    console.warn(`[EmailService] ${errorMsg} Skipped sending real email for Order #${order?.orderNumber || 'N/A'}.`);
     await logEmailAttempt(adminDb, {
       orderId: order?.id,
       orderNumber: order?.orderNumber,
@@ -126,7 +133,7 @@ async function sendViaResend(
 
     if (result.error) {
       const errorMsg = result.error.message || JSON.stringify(result.error);
-      console.error(`[EmailService] Resend API error sending "${subject}" to ${to}:`, errorMsg);
+      console.error(`[EmailService] Resend API error sending email for Order #${order?.orderNumber || 'N/A'}:`, errorMsg);
       await logEmailAttempt(adminDb, {
         orderId: order?.id,
         orderNumber: order?.orderNumber,
@@ -143,7 +150,7 @@ async function sendViaResend(
     }
 
     const resendId = result.data?.id || null;
-    console.log(`[EmailService] ✓ Email sent via Resend to ${to} (ID: ${resendId}) | Subject: "${subject}"`);
+    console.log(`[EmailService] ✓ Email dispatched via Resend for Order #${order?.orderNumber || 'N/A'} (ID: ${resendId}) | Subject: "${subject}"`);
     await logEmailAttempt(adminDb, {
       orderId: order?.id,
       orderNumber: order?.orderNumber,
@@ -159,7 +166,7 @@ async function sendViaResend(
     return { success: true, id: resendId || undefined };
   } catch (err: any) {
     const errorMsg = err?.message || String(err);
-    console.error(`[EmailService] Exception while dispatching via Resend to ${to}:`, errorMsg);
+    console.error(`[EmailService] Exception while dispatching via Resend for Order #${order?.orderNumber || 'N/A'}:`, errorMsg);
     await logEmailAttempt(adminDb, {
       orderId: order?.id,
       orderNumber: order?.orderNumber,

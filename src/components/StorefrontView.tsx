@@ -39,6 +39,7 @@ import {
   MessageCircle,
   Phone,
   Menu,
+  Loader2,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { auth } from '../lib/firebase';
@@ -119,6 +120,10 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
   const [isHelplineOpen, setIsHelplineOpen] = useState(false);
   const [helplineInitialTab, setHelplineInitialTab] = useState<'AI_CHAT' | 'WHATSAPP' | 'EMAIL' | 'PHONE'>('AI_CHAT');
   const [helplineOrderNumber, setHelplineOrderNumber] = useState<string | undefined>(undefined);
+
+  // WhatsApp number normalization for store links
+  const rawWa = settings.whatsappNumber || settings.helplineWhatsApp || '923001234567';
+  const cleanWa = rawWa.replace(/[^0-9]/g, '');
 
   // URL Routing for Policy and Tracking Pages
   useEffect(() => {
@@ -745,7 +750,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (cart.length === 0) return;
+    if (cart.length === 0 || isSubmittingOrder) return;
 
     // If on Step 1, submitting confirms the address and transitions to Step 2
     if (checkoutStep === 1) {
@@ -755,7 +760,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
 
     if (!addressVerification.isFullyVerified) {
       setCheckoutErrorBanner(
-        'Address Verification Failed: Please return to Step 1 and verify all delivery address fields.'
+        'Please complete all required delivery details (Receiver Phone, Complete Street Address, Tehsil, and Postal Code) before continuing.'
       );
       setCheckoutStep(1);
       return;
@@ -806,7 +811,43 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
       setCheckoutStep(3);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (submitErr: any) {
-      setCheckoutErrorBanner(submitErr?.message || 'Failed to place order. Please review your details.');
+      const rawMessage = submitErr?.message || '';
+      let friendlyMsg = 'We were unable to complete your order right now. Please verify your details and tap Submit Order again.';
+
+      if (
+        rawMessage.toLowerCase().includes('insufficient stock') ||
+        rawMessage.toLowerCase().includes('out of stock') ||
+        rawMessage.toLowerCase().includes('stock')
+      ) {
+        friendlyMsg = 'One or more items in your cart has limited inventory or has sold out. Please adjust the item quantities in your cart and try again.';
+      } else if (
+        rawMessage.toLowerCase().includes('strictly restricted to pakistan') ||
+        rawMessage.toLowerCase().includes('cash on delivery')
+      ) {
+        friendlyMsg = 'Cash on Delivery (COD) is available only within Pakistan. For international delivery, please select an advance payment method.';
+      } else if (
+        rawMessage.toLowerCase().includes('network') ||
+        rawMessage.toLowerCase().includes('failed to fetch')
+      ) {
+        friendlyMsg = 'A temporary network interruption occurred. Your cart has been safely preserved. Please check your internet connection and try again.';
+      } else if (
+        rawMessage.toLowerCase().includes('address') ||
+        rawMessage.toLowerCase().includes('phone') ||
+        rawMessage.toLowerCase().includes('tehsil')
+      ) {
+        friendlyMsg = 'Please verify that your delivery address, receiver phone number, and district/tehsil are completely filled.';
+      } else if (rawMessage) {
+        friendlyMsg = rawMessage;
+      }
+
+      setCheckoutErrorBanner(friendlyMsg);
+      // Ensure error is brought into customer's view
+      setTimeout(() => {
+        const errorEl = document.getElementById('checkout-friendly-error');
+        if (errorEl) {
+          errorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     } finally {
       setIsSubmittingOrder(false);
     }
@@ -1124,12 +1165,14 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  setHelplineInitialTab('AI_CHAT');
-                  setIsHelplineOpen(true);
+                  setSubView('ORDER_TRACKING');
+                  window.history.pushState(null, '', '#track');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="w-full text-left py-2 px-3 rounded hover:bg-neutral-50 text-sm font-semibold text-neutral-800"
+                className="w-full text-left py-2 px-3 rounded hover:bg-neutral-50 text-sm font-semibold text-neutral-800 flex items-center justify-between"
               >
-                Track an order
+                <span>Track Your Order (آرڈر ٹریک کریں)</span>
+                <Package className="w-4 h-4 text-[#8C6D46]" />
               </button>
 
               <button
@@ -1147,13 +1190,70 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  setHelplineInitialTab('WHATSAPP');
-                  setIsHelplineOpen(true);
+                  setSubView('CONTACT_US');
+                  window.history.pushState(null, '', '#contact');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="w-full text-left py-2 px-3 rounded hover:bg-neutral-50 text-sm font-semibold text-neutral-800"
+                className="w-full text-left py-2 px-3 rounded hover:bg-neutral-50 text-sm font-semibold text-neutral-800 flex items-center justify-between"
               >
-                Contact Us
+                <span>Contact &amp; WhatsApp Support</span>
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
               </button>
+
+              {/* Mobile Legal & Customer Care Policies */}
+              <div className="pt-2 border-t border-neutral-100 space-y-1">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 px-3 block">
+                  Customer Care &amp; Policies
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setSubView('REFUND_POLICY');
+                    window.history.pushState(null, '', '#refund-policy');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full text-left py-1.5 px-3 text-xs text-neutral-600 hover:text-black rounded"
+                >
+                  Refund &amp; Return Policy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setSubView('SHIPPING_POLICY');
+                    window.history.pushState(null, '', '#shipping-policy');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full text-left py-1.5 px-3 text-xs text-neutral-600 hover:text-black rounded"
+                >
+                  Shipping &amp; Delivery Policy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setSubView('TERMS');
+                    window.history.pushState(null, '', '#terms');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full text-left py-1.5 px-3 text-xs text-neutral-600 hover:text-black rounded"
+                >
+                  Terms &amp; Conditions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setSubView('PRIVACY_POLICY');
+                    window.history.pushState(null, '', '#privacy-policy');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full text-left py-1.5 px-3 text-xs text-neutral-600 hover:text-black rounded"
+                >
+                  Privacy Policy
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2105,7 +2205,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
 
         {/* ======================== 4. MULTI-STEP CHECKOUT VIEW ======================== */}
         {subView === 'CHECKOUT' && (
-          <div className="max-w-[1120px] mx-auto px-6 py-12">
+          <div className="max-w-[1120px] mx-auto px-4 sm:px-6 py-8 sm:py-12">
             {checkoutStep === 3 && confirmedOrderNumber ? (() => {
               const confirmedOrder = orders.find((o) => o.orderNumber === confirmedOrderNumber);
               const isOrderPaid = confirmedOrder?.paymentStatus === 'PAID';
@@ -2430,16 +2530,16 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 pt-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 pt-2">
                     <button
                       onClick={() => setSubView('ACCOUNT')}
-                      className="px-6 py-3 bg-[#141413] text-[#FBFBF9] text-xs font-medium cursor-pointer hover:bg-[#2A2A28]"
+                      className="px-6 py-3 bg-[#141413] text-[#FBFBF9] text-xs font-medium cursor-pointer hover:bg-[#2A2A28] text-center"
                     >
                       View Order Timeline & Account
                     </button>
                     <button
                       onClick={() => setSubView('HOME')}
-                      className="px-6 py-3 border border-black/20 text-xs font-medium cursor-pointer hover:border-[#141413]"
+                      className="px-6 py-3 border border-black/20 text-xs font-medium cursor-pointer hover:border-[#141413] text-center"
                     >
                       Return to Storefront
                     </button>
@@ -2447,7 +2547,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                 </div>
               );
             })() : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
                 <form onSubmit={handleCheckoutSubmit} className="lg:col-span-7 space-y-8">
                   <div className="border-b border-black/[0.08] pb-4 flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -2555,11 +2655,36 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                   </div>
 
                   {checkoutErrorBanner && (
-                    <div className="p-4 bg-rose-950 text-rose-100 border border-rose-700 text-xs leading-relaxed">
-                      <strong className="font-semibold block mb-0.5">
-                        Anti-Fraud & Verification Block:
-                      </strong>
-                      {checkoutErrorBanner}
+                    <div
+                      id="checkout-friendly-error"
+                      className="p-4 sm:p-5 bg-amber-50 border-2 border-amber-400 rounded text-[#141413] text-xs leading-relaxed shadow-sm flex items-start gap-3.5"
+                    >
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1.5 flex-1">
+                        <div className="font-bold text-amber-950 flex items-center justify-between">
+                          <span className="text-sm">Notice: Order Could Not Be Completed</span>
+                          <button
+                            type="button"
+                            onClick={() => setCheckoutErrorBanner(null)}
+                            className="text-amber-800 hover:text-amber-950 text-[11px] font-semibold cursor-pointer underline"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                        <p className="text-amber-900 text-xs leading-relaxed">{checkoutErrorBanner}</p>
+                        <div className="pt-1.5 flex flex-wrap items-center gap-3 text-[11px] border-t border-amber-200">
+                          <span className="text-amber-800 font-medium">Need instant assistance?</span>
+                          <a
+                            href={`https://wa.me/${cleanWa}?text=${encodeURIComponent(`Assalam-o-Alaikum! I need help completing my order on ${settings.storeName || 'your store'}: "${checkoutErrorBanner}"`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            Chat with Support on WhatsApp
+                          </a>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -3450,15 +3575,38 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                     </div>
                   </div>
 
+                    {/* Step 2 Inline Friendly Error Banner */}
+                    {checkoutErrorBanner && (
+                      <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded text-[#141413] text-xs leading-relaxed shadow-sm flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="space-y-1 flex-1">
+                          <strong className="block text-amber-950 font-bold">Checkout Notice:</strong>
+                          <p className="text-amber-900">{checkoutErrorBanner}</p>
+                          <div className="pt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                            <a
+                              href={`https://wa.me/${cleanWa}?text=${encodeURIComponent(`Assalam-o-Alaikum! I need assistance placing my order on ${settings.storeName || 'your store'}: "${checkoutErrorBanner}"`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-emerald-800 font-bold hover:underline"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              Need help? Chat on WhatsApp
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Action Buttons Row on Step 2 */}
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       <button
                         type="button"
+                        disabled={isSubmittingOrder}
                         onClick={() => {
                           setCheckoutStep(1);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className="px-5 py-4 border border-black/20 text-[#141413] hover:bg-[#F7F6F2] text-xs font-semibold uppercase tracking-wider rounded cursor-pointer flex items-center justify-center gap-2 transition-colors shrink-0"
+                        className="px-5 py-4 border border-black/20 text-[#141413] hover:bg-[#F7F6F2] disabled:opacity-50 text-xs font-semibold uppercase tracking-wider rounded cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors shrink-0"
                       >
                         <ArrowLeft className="w-4 h-4" />
                         <span>Back to Address</span>
@@ -3472,10 +3620,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({ onOpenAdmin }) =
                           !addressVerification.isFullyVerified ||
                           !paymentVerification.valid
                         }
-                        className="flex-1 py-4 bg-[#F85606] hover:bg-[#E04D05] text-white text-xs font-bold uppercase tracking-widest rounded shadow-sm disabled:opacity-40 disabled:hover:bg-[#F85606] cursor-pointer transition-colors flex items-center justify-center gap-2"
+                        className="flex-1 py-4 bg-[#F85606] hover:bg-[#E04D05] text-white text-xs font-bold uppercase tracking-widest rounded shadow-sm disabled:opacity-60 disabled:hover:bg-[#F85606] cursor-pointer disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 select-none"
                       >
                         {isSubmittingOrder ? (
-                          'Processing & Confirming Order...'
+                          <div className="flex items-center justify-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-white shrink-0" />
+                            <span>Processing & Confirming Order... Please wait</span>
+                          </div>
                         ) : !paymentVerification.valid ? (
                           'Complete Payment Details to Continue'
                         ) : (
